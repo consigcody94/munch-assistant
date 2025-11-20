@@ -1,19 +1,26 @@
 # 🎤 Munch Assistant
 
-**Terminal-based animated ASCII art featuring Ice Spice with rotating verified quotes!**
+**Terminal-based animated ASCII art featuring Ice Spice with rotating verified quotes AND AUDIO!**
 
 ![Terminal Animation](https://img.shields.io/badge/Terminal-Animation-yellow?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.6+-blue?style=for-the-badge&logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Unix%20%7C%20Linux%20%7C%20Mac%20%7C%20Windows-green?style=for-the-badge)
+![Audio](https://img.shields.io/badge/Audio-Enabled-red?style=for-the-badge)
+
+## 👑 BOW DOWN TO THE SPICE QUEEN 👑
+
+This is not your average terminal app. Ice Spice demands RESPECT and SCREEN SPACE!
 
 ## ✨ Features
 
-- **🎨 Animated ASCII Art** - Beautiful terminal-based artwork with glow effects
+- **🎨 MASSIVE ASCII Art** - Full-size artwork that commands your attention
+- **🎵 AUDIO PLAYBACK** - Looping music/beats while you vibe
 - **💬 Verified Quotes** - Real Ice Spice quotes from 2024 interviews (Rolling Stone, Complex, Billboard)
 - **⚡ Auto-Rotation** - Quotes change automatically every 5 seconds
 - **🎯 Centered Display** - Always perfectly centered, no scrolling
 - **🌈 Colorful** - Vibrant terminal colors with bold styling
 - **⌨️ Interactive** - Press 'n' for next quote, 'q' to quit
+- **💅 DEMANDS RESPECT** - Requires 90×50 terminal or the Queen won't show!
 
 ## 🚀 Quick Start
 
@@ -38,21 +45,37 @@ git clone https://github.com/consigcody94/munch-assistant.git
 cd munch-assistant
 ```
 
-### 2. Run the Application
+### 2. Install Dependencies (REQUIRED for audio!)
+
+```bash
+pip install pygame
+```
+
+Or install all requirements:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run the Application
 
 ```bash
 chmod +x run.sh
 ./run.sh
 ```
 
-That's it! No dependencies to install on Unix/Linux/Mac.
+Or directly:
+
+```bash
+python3 munch.py
+```
 
 ### Windows Users
 
-If you're on Windows, install the curses library:
+Install both pygame and windows-curses:
 
 ```bash
-pip install windows-curses
+pip install pygame windows-curses
 python munch.py
 ```
 
@@ -66,9 +89,20 @@ python munch.py
 
 ## 📐 Terminal Requirements
 
-- **Minimum Size**: 50 columns × 25 rows
-- **Recommended**: 80 columns × 30+ rows for best experience
-- **Color Support**: Terminal with color support recommended
+### 👑 THE QUEEN'S DEMANDS 👑
+
+- **REQUIRED SIZE**: **90 columns × 50 rows MINIMUM**
+- **Color Support**: Absolutely required
+- **Audio**: pygame installed for the full experience
+
+**If your terminal is too small, you'll see this message:**
+> 👑 BOW DOWN TO THE SPICE QUEEN 👑
+>
+> Your terminal is TOO SMALL!
+>
+> RESIZE YOUR TERMINAL OR BUY A BIGGER MONITOR! 💅
+
+The app will NOT run until you resize. Ice Spice demands respect!
 
 ## 🎨 Screenshots
 
@@ -133,19 +167,29 @@ quote_interval = 5  # Change to desired seconds
 ```
 munch-assistant/
 ├── munch.py          # Main Python application
+├── munch.wav         # Audio file (21MB) - Plays on loop
 ├── run.sh            # Quick run script (Unix/Linux/Mac)
-├── requirements.txt  # Dependencies (Windows only)
+├── requirements.txt  # Dependencies
 ├── README.md         # This file
 ├── index.html        # Web version (legacy)
 ├── styles.css        # Web version (legacy)
 └── script.js         # Web version (legacy)
 ```
 
+## 🎵 Audio
+
+The app includes a `munch.wav` file that loops continuously while you vibe. The audio starts automatically when you run the app (if pygame is installed).
+
+**No audio?** Make sure pygame is installed:
+```bash
+pip install pygame
+```
+
 ## 🐛 Troubleshooting
 
 ### "Terminal too small!" message
 
-Resize your terminal window to at least 50×25 characters.
+THE QUEEN HAS SPOKEN! Resize your terminal to at least **90×50** characters. No compromises!
 
 ### Colors not showing
 
