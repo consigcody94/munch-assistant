@@ -1,0 +1,8 @@
+# Munch Assistant Requirements
+# Python 3.6+ required
+# curses module is included in standard Python library (Unix/Linux/Mac)
+# For Windows, you may need: pip install windows-curses
+
+# No additional requirements for Unix/Linux/Mac
+# For Windows only (uncomment if needed):
+# windows-curses>=2.3.0
