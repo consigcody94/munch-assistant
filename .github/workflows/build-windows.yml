@@ -23,7 +23,7 @@ jobs:
 
       - name: Install PyInstaller
         run: |
-          python -m pip install --upgrade pip pyinstaller
+          python -m pip install --upgrade pip pyinstaller windows-curses
 
       - name: Build onefile exe
         run: |
