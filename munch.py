@@ -122,6 +122,10 @@ def ensure_pygame_installed():
     """Offer to install pygame; prefer a local .venv when not already in one."""
     global PYGAME_AVAILABLE, pygame
 
+    # In frozen/packaged builds (PyInstaller), skip install attempts
+    if getattr(sys, "frozen", False):
+        return False
+
     if PYGAME_AVAILABLE:
         return True
 
