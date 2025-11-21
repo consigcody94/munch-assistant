@@ -27,10 +27,7 @@ jobs:
 
       - name: Build onefile exe
         run: |
-          pyinstaller --clean --onefile --name munch-assistant \
-            --add-data "ascii_art.txt;." \
-            --add-data "munch.wav;." \
-            munch.py
+          pyinstaller --clean --onefile --name munch-assistant --add-data "ascii_art.txt;." --add-data "munch.wav;." munch.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
