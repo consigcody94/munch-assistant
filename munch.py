@@ -9,14 +9,21 @@ import curses
 import time
 import os
 import sys
+import subprocess
+import shutil
+import importlib
 from textwrap import wrap
 
 # Try to import pygame for audio
 try:
     import pygame
-    AUDIO_AVAILABLE = True
+    PYGAME_AVAILABLE = True
 except ImportError:
-    AUDIO_AVAILABLE = False
+    PYGAME_AVAILABLE = False
+
+AUDIO_METHOD = None
+AUDIO_PROC = None
+AUDIO_PLAYING = False
 
 # Ice Spice verified quotes from interviews (2024)
 QUOTES = [
@@ -33,7 +40,7 @@ QUOTES = [
 ]
 
 # FULL ASCII ART - THE QUEEN DEMANDS YOUR SCREEN SPACE
-ASCII_ART = r"""
+DEFAULT_ASCII_ART = r"""
                                     .:--::.
                                .-=+++++++++==-:.
                             :=+++++++++++++++++++-.
@@ -65,32 +72,162 @@ ASCII_ART = r"""
  ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
 :++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
 =++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++:
 """
 
-# Required terminal size for THE QUEEN
-REQUIRED_WIDTH = 90
-REQUIRED_HEIGHT = 50
 
-def init_audio():
-    """Initialize audio playback"""
-    if not AUDIO_AVAILABLE:
+def load_ascii_art():
+    """Load ASCII art from ascii_art.txt if present, else fallback to default art."""
+    art_path = os.path.join(os.path.dirname(__file__), "ascii_art.txt")
+    if os.path.exists(art_path):
+        try:
+            with open(art_path, "r", encoding="utf-8", errors="replace") as f:
+                art = f.read()
+                # Avoid empty file edge case
+                if art.strip("\n"):
+                    return art
+        except Exception:
+            pass
+    return DEFAULT_ASCII_ART
+
+
+ASCII_ART = load_ascii_art()
+
+# Pre-calc art dimensions so we can size the terminal to fit everything
+ASCII_LINES = ASCII_ART.lstrip("\n").splitlines()
+ART_HEIGHT = len(ASCII_LINES)
+ART_WIDTH = max(len(line) for line in ASCII_LINES) if ASCII_LINES else 0
+
+# Required terminal size for THE QUEEN (art + header/footer/quotes padding)
+REQUIRED_WIDTH = ART_WIDTH + 10
+REQUIRED_HEIGHT = ART_HEIGHT + 14
+
+
+def auto_resize_terminal(rows: int, cols: int):
+    """Ask the terminal to resize itself (xterm-compatible escape)."""
+    try:
+        sys.stdout.write(f"\x1b[8;{rows};{cols}t")
+        sys.stdout.flush()
+        time.sleep(0.05)
+    except Exception:
+        # If the terminal refuses the resize, fall back to resize prompt
+        pass
+
+
+def ensure_pygame_installed():
+    """Offer to install pygame; prefer a local .venv when not already in one."""
+    global PYGAME_AVAILABLE, pygame
+
+    if PYGAME_AVAILABLE:
+        return True
+
+    print("pygame is not installed. Needed for in-app audio.")
+    choice = input("Install pygame now? [Y/n]: ").strip().lower()
+    if choice not in ("", "y", "yes"):
         return False
 
     try:
-        pygame.mixer.init()
-        audio_file = os.path.join(os.path.dirname(__file__), "munch.wav")
-        if os.path.exists(audio_file):
+        base_python = sys.executable
+        in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+        venv_path = os.path.join(os.path.dirname(__file__), ".venv")
+        python_cmd = base_python
+
+        # If not already in a venv, create/use .venv to avoid polluting system
+        if not in_venv:
+            if not os.path.exists(venv_path):
+                print("Creating .venv for pygame…")
+                subprocess.run([base_python, "-m", "venv", venv_path], check=True)
+            python_cmd = os.path.join(venv_path, "bin", "python3")
+            if not os.path.exists(python_cmd):
+                python_cmd = os.path.join(venv_path, "Scripts", "python.exe")
+
+        print("Installing pygame…")
+        subprocess.run([python_cmd, "-m", "pip", "install", "--upgrade", "pip"], check=False)
+        subprocess.run([python_cmd, "-m", "pip", "install", "pygame"], check=True)
+
+        # If we installed into a new venv, restart the script from that interpreter
+        if python_cmd != sys.executable:
+            print("Restarting app from .venv with pygame available…")
+            os.execv(python_cmd, [python_cmd, __file__])
+
+        # Otherwise reload in the same process
+        importlib.invalidate_caches()
+        pygame = importlib.import_module("pygame")
+        PYGAME_AVAILABLE = True
+        return True
+    except Exception as e:
+        print(f"Failed to install pygame automatically: {e}")
+        return False
+
+def start_external_audio(audio_file):
+    """Play audio using common CLI players (ffplay/afplay/aplay/mpg123/paplay)."""
+    global AUDIO_PROC, AUDIO_METHOD, AUDIO_PLAYING
+
+    players = [
+        ["ffplay", "-nodisp", "-autoexit", "-loop", "0", audio_file],
+        ["afplay", audio_file],
+        ["aplay", "--loop=0", audio_file],
+        ["mpg123", "--loop", "-1", audio_file],
+        ["paplay", audio_file],
+    ]
+
+    for cmd in players:
+        if shutil.which(cmd[0]):
+            try:
+                AUDIO_PROC = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                AUDIO_METHOD = cmd[0]
+                AUDIO_PLAYING = True
+                return True
+            except Exception:
+                continue
+    return False
+
+
+def init_audio():
+    """Initialize audio playback with pygame, otherwise try external players."""
+    global AUDIO_PLAYING, AUDIO_METHOD
+
+    audio_file = os.path.join(os.path.dirname(__file__), "munch.wav")
+    if not os.path.exists(audio_file):
+        return False
+
+    if PYGAME_AVAILABLE:
+        try:
+            pygame.mixer.init()
             pygame.mixer.music.load(audio_file)
             pygame.mixer.music.play(-1)  # Loop forever
+            AUDIO_METHOD = "pygame"
+            AUDIO_PLAYING = True
             return True
-    except Exception as e:
-        return False
-    return False
+        except Exception:
+            AUDIO_PLAYING = False
+
+    return start_external_audio(audio_file)
+
+
+def stop_audio():
+    """Stop whichever audio backend we started."""
+    global AUDIO_PROC, AUDIO_PLAYING, AUDIO_METHOD
+
+    if AUDIO_METHOD == "pygame" and PYGAME_AVAILABLE:
+        try:
+            pygame.mixer.music.stop()
+            pygame.mixer.quit()
+        except Exception:
+            pass
+    elif AUDIO_PROC:
+        try:
+            AUDIO_PROC.terminate()
+        except Exception:
+            pass
+
+    AUDIO_PROC = None
+    AUDIO_PLAYING = False
+    AUDIO_METHOD = None
 
 def draw_centered_text(stdscr, y, text, color_pair=0, bold=False):
     """Draw text centered on screen"""
@@ -105,21 +242,22 @@ def draw_centered_text(stdscr, y, text, color_pair=0, bold=False):
         except curses.error:
             pass
 
-def draw_ascii_art(stdscr, start_y, color_pair=1):
-    """Draw ASCII art centered"""
-    lines = ASCII_ART.strip().split('\n')
+def draw_ascii_art(stdscr, start_y, color_pair=0, x_offset=0):
+    """Draw ASCII art centered; optional horizontal sway via x_offset."""
     height, width = stdscr.getmaxyx()
 
-    for i, line in enumerate(lines):
+    for i, line in enumerate(ASCII_LINES):
         if start_y + i < height:
-            x = max(0, (width - len(line)) // 2)
+            x = max(0, ((width - len(line)) // 2) + x_offset)
             if x < width:
                 try:
-                    stdscr.addstr(start_y + i, x, line[:width-1],
-                                curses.color_pair(color_pair) | curses.A_BOLD)
+                    attr = 0
+                    if color_pair:
+                        attr |= curses.color_pair(color_pair)
+                    stdscr.addstr(start_y + i, x, line[:width-1], attr)
                 except curses.error:
                     pass
-    return len(lines)
+    return len(ASCII_LINES)
 
 def draw_quote(stdscr, start_y, quote, color_pair=2):
     """Draw quote wrapped and centered"""
@@ -167,102 +305,77 @@ def main(stdscr):
     # Setup
     curses.curs_set(0)  # Hide cursor
     stdscr.nodelay(1)   # Non-blocking input
-    stdscr.timeout(100) # 100ms timeout
+    stdscr.timeout(100) # refresh rate
 
-    # Initialize colors
-    curses.start_color()
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_YELLOW, -1)    # Gold for ASCII art
-    curses.init_pair(2, curses.COLOR_CYAN, -1)      # Cyan for quotes
-    curses.init_pair(3, curses.COLOR_MAGENTA, -1)   # Magenta accent
-    curses.init_pair(4, curses.COLOR_RED, -1)       # Red for warnings
-
-    current_quote = 0
-    glow_state = 0
-    last_quote_change = time.time()
-    quote_interval = 5  # Change quote every 5 seconds
+    sway_offset = 0
+    sway_direction = 1
+    last_sway_change = time.time()
+    sway_interval = 0.3  # adjust for slower sway
 
     while True:
-        stdscr.clear()
+        stdscr.erase()
         height, width = stdscr.getmaxyx()
 
         # CHECK IF TERMINAL IS WORTHY OF THE QUEEN
         if height < REQUIRED_HEIGHT or width < REQUIRED_WIDTH:
-            show_resize_demand(stdscr)
-            time.sleep(0.1)
+            # Try to auto-resize before we warn the user
+            auto_resize_terminal(REQUIRED_HEIGHT, REQUIRED_WIDTH)
+            height, width = stdscr.getmaxyx()
 
-            # Check for quit
-            key = stdscr.getch()
-            if key in [ord('q'), ord('Q'), 27]:  # q, Q, or ESC
-                break
-            continue
+            if height < REQUIRED_HEIGHT or width < REQUIRED_WIDTH:
+                show_resize_demand(stdscr)
+                time.sleep(0.1)
 
-        # Calculate positions
-        art_lines = ASCII_ART.strip().count('\n') + 1
-        total_height = art_lines + 10  # Art + spacing + quote
-        start_y = max(0, (height - total_height) // 2)
+                # Check for quit
+                key = stdscr.getch()
+                if key in [ord('q'), ord('Q'), 27]:  # q, Q, or ESC
+                    break
+                continue
 
-        # Draw header with glow effect
-        glow_char = ['✦', '✧', '✨', '✧'][glow_state % 4]
-        header = f"{glow_char} MUNCH ASSISTANT {glow_char}"
-        draw_centered_text(stdscr, start_y, header, 3, bold=True)
+        # Calculate positions for art only
+        art_lines = ART_HEIGHT
+        start_y = max(0, (height - art_lines) // 2)
 
-        # Draw ASCII art
-        art_end_y = draw_ascii_art(stdscr, start_y + 2, 1)
-
-        # Draw quote
-        quote_y = start_y + 2 + art_end_y + 2
-        draw_quote(stdscr, quote_y, QUOTES[current_quote], 2)
-
-        # Draw footer
-        footer_y = height - 2
-        audio_status = "🎵 AUDIO ON" if AUDIO_AVAILABLE else "🔇 Install pygame for audio"
-        draw_centered_text(stdscr, footer_y - 1, audio_status, 3)
-        draw_centered_text(stdscr, footer_y, "Press 'q' to quit • Press 'n' for next quote", 3)
+        # Draw ASCII art only with gentle sway
+        draw_ascii_art(stdscr, start_y, 0, sway_offset)
 
         stdscr.refresh()
 
-        # Update animation
-        glow_state += 1
+        # Update sway
+        now = time.time()
+        if now - last_sway_change > sway_interval:
+            sway_offset += sway_direction
+            if sway_offset >= 2:
+                sway_direction = -1
+            elif sway_offset <= -2:
+                sway_direction = 1
+            last_sway_change = now
 
-        # Auto-change quote
-        if time.time() - last_quote_change > quote_interval:
-            current_quote = (current_quote + 1) % len(QUOTES)
-            last_quote_change = time.time()
-
-        # Handle input
+        # Handle input (only quit)
         key = stdscr.getch()
         if key in [ord('q'), ord('Q'), 27]:  # q, Q, or ESC
             break
-        elif key in [ord('n'), ord('N'), ord(' ')]:  # n, N, or Space
-            current_quote = (current_quote + 1) % len(QUOTES)
-            last_quote_change = time.time()
-
-        time.sleep(0.1)
+        time.sleep(0.05)
 
 def run():
     """Run the application"""
     # Initialize audio first
     audio_started = init_audio()
 
+    # Auto-grow the terminal to fit the full ASCII art and UI
+    auto_resize_terminal(REQUIRED_HEIGHT, REQUIRED_WIDTH)
+
     try:
         curses.wrapper(main)
     except KeyboardInterrupt:
         pass
     finally:
-        # Stop audio
-        if AUDIO_AVAILABLE:
-            try:
-                pygame.mixer.music.stop()
-                pygame.mixer.quit()
-            except:
-                pass
+        stop_audio()
 
     print("\n👑 Thanks for vibing with Ice Spice! You're a MUNCH! 🎤✨")
 
+
 if __name__ == "__main__":
-    if not AUDIO_AVAILABLE:
-        print("⚠️  Warning: pygame not installed. Running without audio.")
-        print("   Install with: pip install pygame")
-        print()
+    if not PYGAME_AVAILABLE:
+        ensure_pygame_installed()
     run()
